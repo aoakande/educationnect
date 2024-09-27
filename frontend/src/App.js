@@ -8,6 +8,7 @@ import Home from './pages/Home';
 import Institution from './pages/Institution';
 import Student from './pages/Student';
 import Admin from './pages/Admin';
+import "./App.css";
 
 const appConfig = new AppConfig(['store_write', 'publish_data']);
 const userSession = new UserSession({ appConfig });

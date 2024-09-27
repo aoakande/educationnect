@@ -77,14 +77,14 @@
 (define-public (enroll-in-course (course-id uint))
   (let
     (
-      (course (unwrap! (map-get? courses { course-id: course-id }) err-not-found))
-      (institution-address (unwrap! (get-institution-address (get institution-id course)) err-not-found))
+      (course (map-get? courses { course-id: course-id }))
+      (institution-address (get-institution-address (get institution-id (unwrap! course err-not-found))))
     )
     ;; Check if the course exists
-    (asserts! (is-some (map-get? courses { course-id: course-id })) err-not-found)
+    (asserts! (is-some course) err-not-found)
     ;; Check if the student is not already enrolled
     (asserts! (is-none (map-get? enrollments { student: tx-sender, course-id: course-id })) err-unauthorized)
-    (try! (stx-transfer? (get price course) tx-sender institution-address))
+    (try! (stx-transfer? (get price (unwrap! course err-not-found)) tx-sender (unwrap! institution-address err-not-found)))
     (map-set enrollments { student: tx-sender, course-id: course-id } { completed: false })
     (ok true)
   )
@@ -94,13 +94,14 @@
 (define-public (complete-course (course-id uint))
   (let
     (
-      (enrollment (unwrap! (map-get? enrollments { student: tx-sender, course-id: course-id }) err-not-found))
+      (enrollment (map-get? enrollments { student: tx-sender, course-id: course-id }))
     )
     ;; Check if the course exists
     (asserts! (is-some (map-get? courses { course-id: course-id })) err-not-found)
-    ;; Check if the student is enrolled and hasn't completed the course yet
+    ;; Check if the student is enrolled
     (asserts! (is-some enrollment) err-not-found)
-    (asserts! (not (get completed enrollment)) err-already-completed)
+    ;; Check if the course hasn't been completed yet
+    (asserts! (not (get completed (unwrap! enrollment err-not-found))) err-already-completed)
     (map-set enrollments { student: tx-sender, course-id: course-id } { completed: true })
     (ok true)
   )
@@ -111,20 +112,21 @@
   (let
     (
       (new-id (var-get next-credential-id))
-      (course (unwrap! (map-get? courses { course-id: course-id }) err-not-found))
-      (enrollment (unwrap! (map-get? enrollments { student: student, course-id: course-id }) err-not-found))
-      (institution-address (unwrap! (get-institution-address (get institution-id course)) err-not-found))
+      (course (map-get? courses { course-id: course-id }))
+      (enrollment (map-get? enrollments { student: student, course-id: course-id }))
+      (institution-id (get-institution-id tx-sender))
     )
     ;; Check if the course exists
     (asserts! (is-some course) err-not-found)
-    ;; Check if the student is enrolled and has completed the course
+    ;; Check if the student is enrolled
     (asserts! (is-some enrollment) err-not-found)
-    (asserts! (get completed enrollment) err-unauthorized)
+    ;; Check if the course has been completed
+    (asserts! (get completed (unwrap! enrollment err-not-found)) err-unauthorized)
     ;; Check if the issuer is the institution that owns the course
-    (asserts! (is-eq tx-sender institution-address) err-unauthorized)
+    (asserts! (is-eq (get institution-id (unwrap! course err-not-found)) (unwrap! institution-id err-unauthorized)) err-unauthorized)
     (map-set credentials 
       { credential-id: new-id } 
-      { student: student, course-id: course-id, institution-id: (get institution-id course), issued-at: block-height }
+      { student: student, course-id: course-id, institution-id: (unwrap! institution-id err-unauthorized), issued-at: block-height }
     )
     (var-set next-credential-id (+ new-id u1))
     (ok new-id)
@@ -167,7 +169,7 @@
   (map-get? credentials { credential-id: credential-id })
 )
 
-;; New function to check if an address belongs to a registered institution
+;; Function to check if an address belongs to a registered institution
 (define-read-only (is-institution (address principal))
   (is-some (get-institution-id address))
 )

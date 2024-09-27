@@ -78,6 +78,7 @@
   (let
     (
       (course (map-get? courses { course-id: course-id }))
+      (student tx-sender)
     )
     ;; Check if the course exists
     (asserts! (is-some course) err-not-found)
@@ -87,9 +88,9 @@
         (institution-address (get-institution-address (get institution-id unwrapped-course)))
       )
       ;; Check if the student is not already enrolled
-      (asserts! (is-none (map-get? enrollments { student: tx-sender, course-id: course-id })) err-unauthorized)
-      (try! (stx-transfer? (get price unwrapped-course) tx-sender (unwrap! institution-address err-not-found)))
-      (ok (map-set enrollments { student: tx-sender, course-id: course-id } { completed: false }))
+      (asserts! (is-none (map-get? enrollments { student: student, course-id: course-id })) err-unauthorized)
+      (try! (stx-transfer? (get price unwrapped-course) student (unwrap! institution-address err-not-found)))
+      (ok (map-set enrollments { student: student, course-id: course-id } { completed: false }))
     )
   )
 )

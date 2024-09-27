@@ -78,15 +78,19 @@
   (let
     (
       (course (map-get? courses { course-id: course-id }))
-      (institution-address (get-institution-address (get institution-id (unwrap! course err-not-found))))
     )
     ;; Check if the course exists
     (asserts! (is-some course) err-not-found)
-    ;; Check if the student is not already enrolled
-    (asserts! (is-none (map-get? enrollments { student: tx-sender, course-id: course-id })) err-unauthorized)
-    (try! (stx-transfer? (get price (unwrap! course err-not-found)) tx-sender (unwrap! institution-address err-not-found)))
-    (map-set enrollments { student: tx-sender, course-id: course-id } { completed: false })
-    (ok true)
+    (let
+      (
+        (unwrapped-course (unwrap! course err-not-found))
+        (institution-address (get-institution-address (get institution-id unwrapped-course)))
+      )
+      ;; Check if the student is not already enrolled
+      (asserts! (is-none (map-get? enrollments { student: tx-sender, course-id: course-id })) err-unauthorized)
+      (try! (stx-transfer? (get price unwrapped-course) tx-sender (unwrap! institution-address err-not-found)))
+      (ok (map-set enrollments { student: tx-sender, course-id: course-id } { completed: false }))
+    )
   )
 )
 
@@ -100,10 +104,14 @@
     (asserts! (is-some (map-get? courses { course-id: course-id })) err-not-found)
     ;; Check if the student is enrolled
     (asserts! (is-some enrollment) err-not-found)
-    ;; Check if the course hasn't been completed yet
-    (asserts! (not (get completed (unwrap! enrollment err-not-found))) err-already-completed)
-    (map-set enrollments { student: tx-sender, course-id: course-id } { completed: true })
-    (ok true)
+    (let
+      (
+        (unwrapped-enrollment (unwrap! enrollment err-not-found))
+      )
+      ;; Check if the course hasn't been completed yet
+      (asserts! (not (get completed unwrapped-enrollment)) err-already-completed)
+      (ok (map-set enrollments { student: tx-sender, course-id: course-id } { completed: true }))
+    )
   )
 )
 
@@ -111,7 +119,6 @@
 (define-public (issue-credential (student principal) (course-id uint))
   (let
     (
-      (new-id (var-get next-credential-id))
       (course (map-get? courses { course-id: course-id }))
       (enrollment (map-get? enrollments { student: student, course-id: course-id }))
       (institution-id (get-institution-id tx-sender))
@@ -120,16 +127,26 @@
     (asserts! (is-some course) err-not-found)
     ;; Check if the student is enrolled
     (asserts! (is-some enrollment) err-not-found)
-    ;; Check if the course has been completed
-    (asserts! (get completed (unwrap! enrollment err-not-found)) err-unauthorized)
-    ;; Check if the issuer is the institution that owns the course
-    (asserts! (is-eq (get institution-id (unwrap! course err-not-found)) (unwrap! institution-id err-unauthorized)) err-unauthorized)
-    (map-set credentials 
-      { credential-id: new-id } 
-      { student: student, course-id: course-id, institution-id: (unwrap! institution-id err-unauthorized), issued-at: block-height }
+    ;; Check if the issuer is an institution
+    (asserts! (is-some institution-id) err-unauthorized)
+    (let
+      (
+        (unwrapped-course (unwrap! course err-not-found))
+        (unwrapped-enrollment (unwrap! enrollment err-not-found))
+        (unwrapped-institution-id (unwrap! institution-id err-unauthorized))
+        (new-id (var-get next-credential-id))
+      )
+      ;; Check if the course has been completed
+      (asserts! (get completed unwrapped-enrollment) err-unauthorized)
+      ;; Check if the issuer is the institution that owns the course
+      (asserts! (is-eq (get institution-id unwrapped-course) unwrapped-institution-id) err-unauthorized)
+      (map-set credentials 
+        { credential-id: new-id } 
+        { student: student, course-id: course-id, institution-id: unwrapped-institution-id, issued-at: block-height }
+      )
+      (var-set next-credential-id (+ new-id u1))
+      (ok new-id)
     )
-    (var-set next-credential-id (+ new-id u1))
-    (ok new-id)
   )
 )
 

@@ -80,6 +80,9 @@
       (course (unwrap! (map-get? courses { course-id: course-id }) err-not-found))
       (institution-address (unwrap! (get-institution-address (get institution-id course)) err-not-found))
     )
+    ;; Check if the course exists
+    (asserts! (is-some (map-get? courses { course-id: course-id })) err-not-found)
+    ;; Check if the student is not already enrolled
     (asserts! (is-none (map-get? enrollments { student: tx-sender, course-id: course-id })) err-unauthorized)
     (try! (stx-transfer? (get price course) tx-sender institution-address))
     (map-set enrollments { student: tx-sender, course-id: course-id } { completed: false })
@@ -93,6 +96,10 @@
     (
       (enrollment (unwrap! (map-get? enrollments { student: tx-sender, course-id: course-id }) err-not-found))
     )
+    ;; Check if the course exists
+    (asserts! (is-some (map-get? courses { course-id: course-id })) err-not-found)
+    ;; Check if the student is enrolled and hasn't completed the course yet
+    (asserts! (is-some enrollment) err-not-found)
     (asserts! (not (get completed enrollment)) err-already-completed)
     (map-set enrollments { student: tx-sender, course-id: course-id } { completed: true })
     (ok true)
@@ -108,8 +115,13 @@
       (enrollment (unwrap! (map-get? enrollments { student: student, course-id: course-id }) err-not-found))
       (institution-address (unwrap! (get-institution-address (get institution-id course)) err-not-found))
     )
-    (asserts! (is-eq tx-sender institution-address) err-unauthorized)
+    ;; Check if the course exists
+    (asserts! (is-some course) err-not-found)
+    ;; Check if the student is enrolled and has completed the course
+    (asserts! (is-some enrollment) err-not-found)
     (asserts! (get completed enrollment) err-unauthorized)
+    ;; Check if the issuer is the institution that owns the course
+    (asserts! (is-eq tx-sender institution-address) err-unauthorized)
     (map-set credentials 
       { credential-id: new-id } 
       { student: student, course-id: course-id, institution-id: (get institution-id course), issued-at: block-height }
@@ -124,6 +136,8 @@
   (begin
     (asserts! (is-eq tx-sender contract-owner) err-owner-only)
     (asserts! (> amount u0) err-invalid-input)
+    ;; Check if the recipient is a valid principal
+    (asserts! (is-some (get-institution-id recipient)) err-unauthorized)
     (ft-mint? edutoken amount recipient)
   )
 )
